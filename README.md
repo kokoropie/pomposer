@@ -3,6 +3,48 @@
 A proof-of-concept package manager for PHP that installs dependencies once and shares them globally across projects to save space and boost speed. Inspired by pnpm, Pomposer avoids duplication by linking packages instead of reinstalling them for every project.
 ![Pomposer logo](meta/pomposer.png "Pomposer logo")
 
+> [!IMPORTANT]
+> **This is a fork** of [HichemTab-tech/pomposer](https://github.com/HichemTab-tech/pomposer), maintained at [kokoropie/pomposer](https://github.com/kokoropie/pomposer).
+> It adds a symlinked, IDE-friendly `vendor/` (pnpm-style), `composer.lock` generation, the `update` / `require` / `require-dev` / `remove` / `dump-autoload` commands, `--no-dev`, `-w` / `-W`, `vendor/bin`, and several resolver/autoloader fixes.
+> It is not published on Packagist under its own name — install it from a local clone as shown below.
+
+### Install this fork globally from a local clone (symlinked)
+
+Composer's [`path` repository](https://getcomposer.org/doc/05-repositories.md#path) with `"symlink": true` links the global install to your clone, so every change in the clone (edits, `git pull`, switching branches) takes effect immediately without reinstalling.
+
+```bash
+# 1. Clone the fork and install its own dependencies (bin/pomposer loads the clone's vendor/autoload.php)
+git clone https://github.com/kokoropie/pomposer.git ~/src/pomposer
+cd ~/src/pomposer && composer install
+
+# 2. If the upstream package is already installed globally, remove it first
+composer global remove hichemtab-tech/pomposer
+
+# 3. Point Composer's global project at the clone (use the absolute path of your clone)
+composer global config repositories.pomposer '{"type": "path", "url": "'"$HOME"'/src/pomposer", "options": {"symlink": true}}'
+
+# 4. Require it from that path; @dev accepts the clone's current branch (e.g. dev-master)
+composer global require "hichemtab-tech/pomposer:@dev"
+```
+
+Make sure Composer's global bin directory is on your `PATH` (`composer global config bin-dir --absolute` prints it, usually `~/.composer/vendor/bin` or `~/.config/composer/vendor/bin`), then check:
+
+```bash
+pomposer --version
+ls -l "$(composer global config home)/vendor/hichemtab-tech"   # pomposer -> ~/src/pomposer
+```
+
+To go back to the Packagist release:
+
+```bash
+composer global remove hichemtab-tech/pomposer
+composer global config --unset repositories.pomposer
+composer global require hichemtab-tech/pomposer
+```
+
+> [!TIP]
+> Without a global install you can also run the clone directly: `php ~/src/pomposer/bin/pomposer install`, or add `alias pomposer="php ~/src/pomposer/bin/pomposer"` to your shell profile.
+
 ## Why Pomposer?
 
 Composer is the backbone of modern PHP development, but it's not optimized for shared storage.
