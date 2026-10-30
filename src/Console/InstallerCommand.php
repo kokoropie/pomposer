@@ -115,8 +115,7 @@ abstract class InstallerCommand extends Command
 
         $this->dumpAutoload($output, $composerJson, $packages, $devMode, $devPackageNames);
 
-        $scriptRunner = new ScriptRunner();
-        $scriptRunner->runScripts($composerJson, $scriptEvent, $devMode);
+        (new ScriptRunner($composerJson, $devMode))->run($scriptEvent);
 
         $output->writeln('<info>✅ Post-install scripts completed!</info>');
     }
@@ -138,6 +137,6 @@ abstract class InstallerCommand extends Command
         $generator->generatePackageManifests($packages, $composerJson, $devMode, $devPackageNames);
 
         $output->writeln('<info>🔄 Running post-autoload-dump scripts...</info>');
-        (new ScriptRunner())->runScripts($composerJson, 'post-autoload-dump', $devMode);
+        (new ScriptRunner($composerJson, $devMode))->run('post-autoload-dump');
     }
 }
