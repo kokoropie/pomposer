@@ -12,6 +12,7 @@ Every `composer install` duplicates packages per project, eating up disk space a
 
 - 📦 **Global Package Store**: Each package version is downloaded and stored *only once*.
 - ⚡ **Faster Installs**: Once a package is in the global store, installs are nearly instant.
+- 🔗 **Symlinked `vendor/`**: Packages are symlinked into `vendor/`, pnpm-style, so IDEs and tools see a normal vendor directory.
 - ⚙️ **Advanced Autoloader**: Generates a complete, optimized autoloader (PSR-4, classmap, files).
 - 🤝 **Framework Compatibility**: Creates the necessary manifests (`installed.json`, etc.) for features like Laravel's package auto-discovery.
 - 📜 **Script Execution**: Correctly runs `post-install-cmd` and `post-autoload-dump` scripts.
@@ -23,11 +24,13 @@ Every `composer install` duplicates packages per project, eating up disk space a
 1.  **Read `composer.lock`** (or falls back to `composer.json` with its own resolver).
 2.  **Download and cache packages** to the global store at `~/.pomposer-store`.
 3.  **Read the full `composer.json` from within each package** to gather all metadata (autoloading rules, scripts, and framework providers).
-4.  **Generate a complete vendor directory**, including:
-    - An optimized classmap and PSR-4 autoloader pointing to the global store.
+4.  **Symlink each package into `vendor/`** (`vendor/<vendor>/<package>` → `~/.pomposer-store/<vendor>/<package>/<version>`), pnpm-style, so IDEs (PhpStorm, Intelephense, …) index `vendor/` as usual.
+5.  **Generate a complete vendor directory**, including:
+    - An optimized classmap and PSR-4 autoloader resolved through the `vendor/` links (portable `$vendorDir`/`$baseDir` paths, like Composer).
     - The full package manifest (`installed.json`, `installed.php`, etc.) for framework compatibility.
     - Compatibility stubs for Composer's internal classes.
-5.  **Execute post-install scripts** to finalize the installation (e.g., `php artisan package:discover`).
+    - A stub `Composer\Script\Event` passed to static script handlers (e.g. `Illuminate\Foundation\ComposerScripts::postAutoloadDump`).
+6.  **Execute post-install scripts** to finalize the installation (e.g., `php artisan package:discover`).
 
 ---
 
@@ -127,7 +130,7 @@ It will:
 
 * Resolve dependencies (even if no `composer.lock`)
 * Download and cache each package version in `~/.pomposer-store`
-* Link the necessary packages into your `vendor/` folder
+* Symlink each package into your `vendor/` folder (e.g. `vendor/monolog/monolog` → `~/.pomposer-store/monolog/monolog/3.9.0`)
 * Generate a working autoloader
 
 ### 5. Run the test script
@@ -147,6 +150,40 @@ New file name: file (3)
 ```
 
 ✅ You just installed `monolog/monolog` without Composer touching your `vendor/` at all.
+
+## Vendor Layout
+
+Instead of copying files, Pomposer fills `vendor/` with symlinks into the global store, the same way pnpm links `node_modules`:
+
+```
+vendor/
+├── autoload.php
+├── composer/                 # generated autoloader + manifests (real files)
+│   ├── autoload_classmap.php
+│   ├── autoload_files.php
+│   ├── autoload_psr4.php
+│   ├── ClassLoader.php
+│   ├── InstalledVersions.php
+│   ├── installed.json
+│   └── installed.php
+├── hichemtab-tech/
+│   └── namecrement -> ~/.pomposer-store/hichemtab-tech/namecrement/1.1.0
+├── monolog/
+│   └── monolog -> ~/.pomposer-store/monolog/monolog/3.9.0
+└── psr/
+    └── log -> ~/.pomposer-store/psr/log/3.0.2
+```
+
+- **IDE support**: PhpStorm, Intelephense and other tools index `vendor/` as usual, so autocompletion and go-to-definition work.
+- **Portable autoloader**: the generated autoload files use `$vendorDir` / `$baseDir` paths (like Composer) and resolve classes through the `vendor/` links, not hard-coded store paths.
+- **Kept in sync**: re-running `pomposer install` repoints links when a version changes, replaces real directories left behind by Composer, and removes links for packages that are no longer required.
+- **Windows**: if creating a symlink is not permitted, Pomposer falls back to a directory junction (`mklink /J`).
+
+> [!NOTE]
+> At runtime PHP resolves symlinks, so `__FILE__` / `__DIR__` inside a package point to the store path. Packages that locate `vendor/autoload.php` by walking up from their own directory (e.g. `__DIR__ . '/../../autoload.php'`) won't find it.
+
+> [!TIP]
+> Add `vendor/` to `.gitignore` as usual — the links point to your local store and should not be committed.
 
 ## Example: Building a Real Laravel App with Pomposer
 
@@ -230,13 +267,32 @@ Packages are stored by name + version:
 > [!WARNING]  
 > Pomposer is still in **beta** — built as a proof of concept.
 
-Current limitations :
+Current limitations:
 
-* ❌ ️ **No Symlinking:** Unlike pnpm, Pomposer does not use symlinks. It generates an autoloader that points directly to the global store. This means the `vendor/` directory is mostly empty, which can break tools or build scripts that expect to find physical files there.
-* ⚠️ **Basic Dependency Resolver:** The dependency resolver is simple and may fail on complex version constraints. It works best when a `composer.lock` file is present.
+**Commands & workflow**
+
+* ❌ **`install` only:** There is no `update`, `require`, `remove` or `dump-autoload` command yet.
+* ❌ **No lock file generation:** Without a `composer.lock`, Pomposer resolves versions itself but does not write a lock file, so installs are not reproducible.
+* ❌ **No `--no-dev`:** `require-dev` / `packages-dev` are always installed.
+
+**Dependency resolution**
+
+* ⚠️ **Basic Dependency Resolver:** The resolver is simple and may fail on complex version constraints. It works best when a `composer.lock` file is present.
 * ❌ **No Support for `provide`/`replace`/`conflict`:** These advanced dependency management rules are not implemented.
+* ❌ **Packagist dist archives only:** Custom `repositories` (VCS, path, private Packagist/Satis), source installs (`--prefer-source`) and authentication (`auth.json`) are not supported.
+
+**Vendor & autoloading**
+
+* ❌ **No `vendor/bin`:** Package binaries are not linked into `vendor/bin` yet.
+* ⚠️ **Symlinks resolve to the store at runtime:** `__FILE__` / `__DIR__` inside a package point to `~/.pomposer-store/...`, not `vendor/`. Packages that find `vendor/autoload.php` by walking up from their own directory will fail.
+* ⚠️ **Shared store:** All projects share the same package files — patching a file in `vendor/` changes it for every project using that version.
+* ⚠️ **Symlinks required:** On Windows, symlinks need Developer Mode or admin rights; otherwise Pomposer falls back to directory junctions.
+* ⚠️ **Limited Autoloading:** No support for the deprecated `psr-0` standard or `exclude-from-classmap`.
+
+**Ecosystem**
+
 * ❌ **No Composer Plugin System:** Cannot run Composer plugins.
-* ⚠️ **Limited Autoloading:** Does not support the deprecated `psr-0` standard.
+* ⚠️ **Partial script support:** Only `post-autoload-dump` and `post-install-cmd` run; `@composer` and other `@alias` scripts are skipped.
 
 ---
 

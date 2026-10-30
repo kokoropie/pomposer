@@ -20,14 +20,15 @@ class ScriptRunner
                 [, $class, $method] = $matches;
                 echo "[Pomposer] Calling $class::$method() via separate process\n";
 
-                // We create a small bootstrap script to execute the call in the project's context.
-                $phpCode = sprintf(
-                    "require_once __DIR__ . '/vendor/autoload.php'; %s::%s(null);",
-                    addslashes($class), // Use addslashes to be safe
-                    addslashes($method)
-                );
-
-                passthru("php -r \"$phpCode\"");
+                // Run it through a small bootstrap that passes a stub Composer\Script\Event,
+                // since handlers like Laravel's type-hint and use it.
+                passthru(sprintf(
+                    'php %s %s %s %s',
+                    escapeshellarg(__DIR__ . '/stubs/run-script.php.stub'),
+                    escapeshellarg($class),
+                    escapeshellarg($method),
+                    escapeshellarg($scriptKey)
+                ));
 
             } elseif (str_starts_with($script, '@')) {
                 // Aliases like @composer or @some-custom-script

@@ -1,0 +1,111 @@
+<?php
+
+/*
+ * Minimal stand-ins for the Composer classes that script handlers receive
+ * (e.g. Illuminate\Foundation\ComposerScripts::postAutoloadDump(Event $event)).
+ * Loaded before the project's autoloader, only in the script-runner process.
+ */
+
+namespace Composer\IO {
+    if (!interface_exists(IOInterface::class, false)) {
+        interface IOInterface
+        {
+            public const QUIET = 1;
+            public const NORMAL = 2;
+            public const VERBOSE = 4;
+            public const VERY_VERBOSE = 8;
+            public const DEBUG = 16;
+        }
+    }
+
+    if (!class_exists(ConsoleIO::class, false)) {
+        class ConsoleIO implements IOInterface
+        {
+            public function write($messages, bool $newline = true, int $verbosity = self::NORMAL): void
+            {
+                if ($verbosity <= self::NORMAL) {
+                    fwrite(STDOUT, implode(PHP_EOL, (array) $messages) . ($newline ? PHP_EOL : ''));
+                }
+            }
+
+            public function writeError($messages, bool $newline = true, int $verbosity = self::NORMAL): void
+            {
+                if ($verbosity <= self::NORMAL) {
+                    fwrite(STDERR, implode(PHP_EOL, (array) $messages) . ($newline ? PHP_EOL : ''));
+                }
+            }
+
+            public function isInteractive(): bool { return false; }
+            public function isVerbose(): bool { return false; }
+            public function isVeryVerbose(): bool { return false; }
+            public function isDebug(): bool { return false; }
+            public function isDecorated(): bool { return false; }
+            public function ask($question, $default = null) { return $default; }
+            public function askConfirmation($question, $default = true) { return $default; }
+            public function select($question, $choices, $default, $attempts = false, $errorMessage = '', $multiselect = false) { return $default; }
+        }
+    }
+}
+
+namespace Composer {
+    if (!class_exists(Config::class, false)) {
+        class Config
+        {
+            public function __construct(protected array $config = []) {}
+
+            public function get(string $key)
+            {
+                return $this->config[$key] ?? null;
+            }
+
+            public function has(string $key): bool
+            {
+                return array_key_exists($key, $this->config);
+            }
+
+            public function all(): array
+            {
+                return ['config' => $this->config];
+            }
+        }
+    }
+
+    if (!class_exists(Composer::class, false)) {
+        class Composer
+        {
+            public function __construct(protected Config $config) {}
+
+            public function getConfig(): Config
+            {
+                return $this->config;
+            }
+        }
+    }
+}
+
+namespace Composer\Script {
+    use Composer\Composer;
+    use Composer\IO\IOInterface;
+
+    if (!class_exists(Event::class, false)) {
+        class Event
+        {
+            public function __construct(
+                protected string $name,
+                protected Composer $composer,
+                protected IOInterface $io,
+                protected bool $devMode = false,
+                protected array $args = [],
+                protected array $flags = []
+            ) {}
+
+            public function getName(): string { return $this->name; }
+            public function getComposer(): Composer { return $this->composer; }
+            public function getIO(): IOInterface { return $this->io; }
+            public function isDevMode(): bool { return $this->devMode; }
+            public function getArguments(): array { return $this->args; }
+            public function getFlags(): array { return $this->flags; }
+            public function getOriginatingEvent() { return $this; }
+        }
+    }
+}

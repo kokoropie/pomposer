@@ -10,6 +10,7 @@ use HichemTabTech\Pomposer\PackageInstaller;
 use HichemTabTech\Pomposer\PackageStore;
 use HichemTabTech\Pomposer\PackagistGateway;
 use HichemTabTech\Pomposer\ScriptRunner;
+use HichemTabTech\Pomposer\VendorLinker;
 use Illuminate\Support\Composer;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -99,6 +100,9 @@ class InstallCommand extends Command
         foreach ($packages as $pkg) {
             $installer->install($pkg);
         }
+
+        $output->writeln('<info>🔗 Linking packages into vendor/...</info>');
+        (new VendorLinker($store))->link($packages);
 
         $generator = new AutoloadGenerator();
 
