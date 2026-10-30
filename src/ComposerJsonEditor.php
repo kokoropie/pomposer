@@ -2,6 +2,7 @@
 
 namespace HichemTabTech\Pomposer;
 
+use Composer\Semver\Semver;
 use Composer\Semver\VersionParser;
 use RuntimeException;
 use stdClass;
@@ -124,12 +125,16 @@ class ComposerJsonEditor
                 continue;
             }
 
+            if (isset($version['require']['php']) && !Semver::satisfies(PHP_VERSION, $version['require']['php'])) {
+                continue;
+            }
+
             $parts = explode('.', ltrim($pretty, 'vV'));
 
             return '^' . $parts[0] . '.' . ($parts[1] ?? '0');
         }
 
-        throw new RuntimeException("Could not find a stable version of $name. Specify a constraint, e.g. $name:dev-main");
+        throw new RuntimeException("Could not find a stable version of $name compatible with PHP " . PHP_VERSION . ". Specify a constraint, e.g. $name:dev-main");
     }
 
     /**

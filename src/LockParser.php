@@ -4,6 +4,7 @@ namespace HichemTabTech\Pomposer;
 
 use RuntimeException;
 use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 
 class LockParser
 {
@@ -15,6 +16,7 @@ class LockParser
     protected array $locked = [];
     protected array $devPackageNames = [];
     protected bool $wasResolved = false;
+    protected string $minimumStability = 'stable';
     protected PackagistGateway $packagist;
 
     public function __construct(PackagistGateway $packagist, string $composerPath = 'composer.json', string $lockPath = 'composer.lock')
@@ -102,6 +104,8 @@ class LockParser
 
     protected function resolveAll(array $composer): array
     {
+        $this->minimumStability = $composer['minimum-stability'] ?? 'stable';
+
         $requires = $composer['require'] ?? [];
         $requiresDev = $composer['require-dev'] ?? [];
 
@@ -174,11 +178,12 @@ class LockParser
 
         $metadata = $this->packagist->getPackageMetadata($package);
         $bestVersion = $this->pickBestVersion($metadata, $constraint);
-        echo "    ➡️  Best version found: {$bestVersion['version']}\n";
 
         if (!$bestVersion) {
-            throw new RuntimeException("Could not resolve version for $package");
+            throw new RuntimeException("Could not resolve a version of $package matching $constraint");
         }
+
+        echo "    ➡️  Best version found: {$bestVersion['version']}\n";
 
         $this->resolved[$package] = [
             'name' => $package,
@@ -196,34 +201,44 @@ class LockParser
 
     protected function pickBestVersion(array $versions, string $constraint): ?array
     {
-        $currentPhpVersion = phpversion();
+        // An explicit stability flag or dev branch in the constraint opts into unstable versions.
+        $allowUnstable = str_contains($constraint, '@') || str_contains($constraint, 'dev-');
+        $phpIncompatible = null;
+
         foreach ($versions as $v) {
-            if (str_starts_with($v['version'], 'dev')) {
+            if (!$allowUnstable && !$this->isStableEnough($v['version'])) {
                 continue;
             }
 
             $version = $v['version_normalized'] ?? $v['version'];
 
-            // If the package requires PHP, check compatibility
-            if (isset($requires['php']) && !Semver::satisfies($currentPhpVersion, $requires['php'])) {
+            if (!Semver::satisfies($version, $constraint)) {
                 continue;
             }
 
-            // Check if this version satisfies the constraint
-            if (Semver::satisfies($version, $constraint)) {
-                echo "    ➡️  Version {$v['version']} satisfies constraint $constraint\n";
-                return $v;
+            // Skip versions that need a newer/older PHP than the one running Pomposer.
+            if (isset($v['require']['php']) && !Semver::satisfies(PHP_VERSION, $v['require']['php'])) {
+                $phpIncompatible ??= $v;
+                continue;
             }
+
+            echo "    ➡️  Version {$v['version']} satisfies constraint $constraint\n";
+            return $v;
         }
 
-        // Fallback to the first stable
-        foreach ($versions as $v) {
-            if (!str_starts_with($v['version'], 'dev')) {
-                echo "    ➡️  Fallback to first stable version: {$v['version']}\n";
-                return $v;
-            }
+        if ($phpIncompatible !== null) {
+            echo "    ⚠️  No version matching $constraint supports PHP " . PHP_VERSION . ", using {$phpIncompatible['version']} (requires php {$phpIncompatible['require']['php']})\n";
+            return $phpIncompatible;
         }
 
-        return $versions[0] ?? null;
+        return null;
+    }
+
+    protected function isStableEnough(string $version): bool
+    {
+        $ranks = ['stable' => 0, 'RC' => 5, 'beta' => 10, 'alpha' => 15, 'dev' => 20];
+        $minimum = $ranks[$this->minimumStability] ?? 0;
+
+        return $ranks[VersionParser::parseStability($version)] <= $minimum;
     }
 }
