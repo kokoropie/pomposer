@@ -206,8 +206,7 @@ PHP;
             }
 
             if (is_file($path)) {
-                $class = $this->extractClassNameFromFile($path);
-                if ($class) {
+                foreach ($this->extractClassNamesFromFile($path) as $class) {
                     $map[$class] = $path;
                 }
                 continue;
@@ -225,8 +224,7 @@ PHP;
                     }
 
                     $filePath = $this->normalizePath($file->getPathname());
-                    $class = $this->extractClassNameFromFile($filePath);
-                    if ($class) {
+                    foreach ($this->extractClassNamesFromFile($filePath) as $class) {
                         $map[$class] = $filePath;
                     }
                 }
@@ -314,19 +312,83 @@ require __DIR__ . '/composer/autoload_files.php';
 PHP;
     }
 
-    protected function extractClassNameFromFile(string $file): ?string
+    /**
+     * Returns every class, interface, trait and enum declared in a file, using PHP's tokenizer so that
+     * one-line files, several namespaces/classes per file, comments, strings, Foo::class and
+     * anonymous classes are handled correctly.
+     *
+     * @return string[]
+     */
+    protected function extractClassNamesFromFile(string $file): array
     {
-        $contents = file_get_contents($file);
+        $contents = @file_get_contents($file);
 
-        // Match namespace
-        $namespace = '';
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $nsMatch)) {
-            $namespace = trim($nsMatch[1]) . '\\';
+        // Cheap pre-check so files without any declaration are not tokenized.
+        if ($contents === false || !preg_match('{\b(?:class|interface|trait|enum)\s}i', $contents)) {
+            return [];
         }
 
-        // Match class/interface/trait/enum
-        if (preg_match('/^\s*(?:\b(?:final|abstract|readonly)\b\s+)*\b(class|interface|trait|enum)\b\s+([a-zA-Z0-9_]+)/mi', $contents, $classMatch)) {
-            return $namespace . $classMatch[2];
+        $tokens = token_get_all($contents);
+        $count = count($tokens);
+        $classes = [];
+        $namespace = '';
+        $previous = null;
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (!is_array($token)) {
+                $previous = $token;
+                continue;
+            }
+
+            $id = $token[0];
+
+            if ($id === T_WHITESPACE || $id === T_COMMENT || $id === T_DOC_COMMENT) {
+                continue;
+            }
+
+            if ($id === T_HALT_COMPILER) {
+                break;
+            }
+
+            if ($id === T_NAMESPACE) {
+                // "namespace Foo\Bar;" or "namespace Foo\Bar {"; "namespace {" is the global namespace.
+                $next = $this->nextSignificantToken($tokens, $i);
+                $namespace = is_array($next) && in_array($next[0], [T_STRING, T_NAME_QUALIFIED], true)
+                    ? $next[1] . '\\'
+                    : '';
+            } elseif (
+                in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)
+                && $previous !== T_DOUBLE_COLON // Foo::class
+                && $previous !== T_NEW          // new class { ... }
+            ) {
+                $next = $this->nextSignificantToken($tokens, $i);
+
+                if (is_array($next) && $next[0] === T_STRING) {
+                    $classes[] = $namespace . $next[1];
+                }
+            }
+
+            $previous = $id;
+        }
+
+        return $classes;
+    }
+
+    /**
+     * @return array|string|null The next token that is not whitespace or a comment.
+     */
+    private function nextSignificantToken(array $tokens, int $index): array|string|null
+    {
+        $count = count($tokens);
+
+        for ($i = $index + 1; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (!is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                return $token;
+            }
         }
 
         return null;
