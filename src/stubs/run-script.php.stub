@@ -2,22 +2,32 @@
 
 /*
  * Runs a static Composer script handler (Class::method) in the project's context.
- * Usage: php run-script.php.stub <Class> <method> <event-name> <dev-mode 1|0>   (cwd = project root)
+ * Usage: php run-script.php.stub <Class> <method> <event-name> <dev-mode 1|0> [args...]   (cwd = project root)
  */
 
 [, $class, $method, $eventName] = $argv;
 $devMode = ($argv[4] ?? '1') === '1';
+$args = array_slice($argv, 5);
 
 require __DIR__ . '/ComposerScriptEvent.php.stub';
 
 $vendorDir = getcwd() . '/vendor';
+if (!file_exists($vendorDir . '/autoload.php')) {
+    fwrite(STDERR, "$vendorDir/autoload.php not found, run `pomposer install` first" . PHP_EOL);
+    exit(1);
+}
 require_once $vendorDir . '/autoload.php';
+
+if (!class_exists($class)) {
+    fwrite(STDERR, "Class $class is not autoloadable, can not call $eventName script" . PHP_EOL);
+    exit(1);
+}
 
 $config = new Composer\Config([
     'vendor-dir' => $vendorDir,
     'bin-dir' => $vendorDir . '/bin',
 ]);
 
-$event = new Composer\Script\Event($eventName, new Composer\Composer($config), new Composer\IO\ConsoleIO(), $devMode);
+$event = new Composer\Script\Event($eventName, new Composer\Composer($config), new Composer\IO\ConsoleIO(), $devMode, $args);
 
 $class::$method($event);

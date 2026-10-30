@@ -57,7 +57,7 @@ Every `composer install` duplicates packages per project, eating up disk space a
 - 🔗 **Symlinked `vendor/`**: Packages are symlinked into `vendor/`, pnpm-style, so IDEs and tools see a normal vendor directory.
 - ⚙️ **Composer-identical Autoloader**: Generates the same files as Composer (`autoload.php`, `autoload_real.php`, `autoload_static.php`, PSR-4, PSR-0, classmap, files, `platform_check.php`) with Composer's own `ClassLoader`, always optimized.
 - 🤝 **Framework Compatibility**: Creates the necessary manifests (`installed.json`, etc.) for features like Laravel's package auto-discovery.
-- 📜 **Script Execution**: Correctly runs `post-install-cmd` and `post-autoload-dump` scripts.
+- 📜 **Script Execution**: Runs `post-install-cmd` / `post-update-cmd` / `post-autoload-dump` and custom scripts (`pomposer run-script`, `pomposer <script>`).
 
 ---
 
@@ -104,6 +104,8 @@ pomposer install
 | `--no-dev` (install / update) | Skip `packages-dev` and the root `autoload-dev`; dev links are removed from `vendor/`, `installed.json` gets `"dev": false` and script handlers see `$event->isDevMode() === false`. `composer.lock` still lists the dev packages. |
 | `pomposer require --dev <packages...>` / `pomposer require-dev <packages...>` | Same as `require`, but adds the packages to `require-dev` (they end up in `packages-dev` in the lock). Alias: `rd`. |
 | `pomposer remove <packages...>` | Remove packages from `require` / `require-dev` and uninstall them, along with dependencies nothing else needs; everything else stays locked. Supports `--no-update` and `--no-dev`. On failure, `composer.json` and `composer.lock` are restored. Aliases: `rm`, `uninstall`. |
+| `pomposer run-script <script> [args...]` | Run a script from `composer.json` (custom scripts or events like `post-install-cmd`). Extra arguments are appended to each command, or put in place of `@additional_args`; use `--` before arguments that start with a dash. Supports `--timeout` (seconds, `0` = none; defaults to `config.process-timeout`, 300), `--no-dev` and `-l` / `--list` (with `scripts-descriptions`). Exits with the failing command's exit code. Alias: `run`. |
+| `pomposer <script> [args...]` | Custom scripts are also available as top-level commands, like Composer (`pomposer test --filter=Foo`), unless the name clashes with a Pomposer command or a Composer event; `scripts-aliases` add aliases. |
 | `pomposer dump-autoload [--no-dev]` | Regenerate the autoloader and package manifests for the packages linked in `vendor/` (from `vendor/composer/installed.json`) and run `post-autoload-dump`. `-o` is accepted for Composer compatibility (the classmap is always generated). Alias: `dumpautoload`. |
 
 ---
@@ -368,7 +370,7 @@ Current limitations:
 **Ecosystem**
 
 * ❌ **No Composer Plugin System:** Cannot run Composer plugins.
-* ⚠️ **Partial script support:** Only `post-autoload-dump` and `post-install-cmd` run; `@composer` and other `@alias` scripts are skipped.
+* ⚠️ **Partial script support:** During `install` / `update` / `require` / `remove` / `dump-autoload` only `post-install-cmd` / `post-update-cmd` and `post-autoload-dump` are dispatched (the other `pre-*` / `post-*` events run only through `run-script`). Scripts support `@php`, `@putenv`, `@<script>` references, `Class::method` handlers (with a stub `Composer\Script\Event`) and shell commands; `@composer` runs Pomposer itself, so only the commands Pomposer implements work. Invokable classes / Symfony commands as scripts are not supported. A failing script fails the command, like Composer.
 
 ---
 

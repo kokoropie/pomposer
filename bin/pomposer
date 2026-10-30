@@ -6,6 +6,8 @@ use HichemTabTech\Pomposer\Console\InstallCommand;
 use HichemTabTech\Pomposer\Console\RemoveCommand;
 use HichemTabTech\Pomposer\Console\RequireCommand;
 use HichemTabTech\Pomposer\Console\RequireDevCommand;
+use HichemTabTech\Pomposer\Console\RunScriptCommand;
+use HichemTabTech\Pomposer\Console\ScriptAliasCommand;
 use HichemTabTech\Pomposer\Console\UpdateCommand;
 
 if (file_exists(__DIR__.'/../../../autoload.php')) {
@@ -28,6 +30,10 @@ $app->add(new RequireCommand);
 $app->add(new RequireDevCommand);
 $app->add(new RemoveCommand);
 $app->add(new DumpAutoloadCommand);
+$app->add(new RunScriptCommand);
+
+// Custom scripts of ./composer.json become commands too (`pomposer test`), like Composer.
+ScriptAliasCommand::registerAll($app);
 
 /** @noinspection PhpUnhandledExceptionInspection */
 $app->run();
