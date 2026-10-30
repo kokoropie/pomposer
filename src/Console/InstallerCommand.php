@@ -87,6 +87,21 @@ abstract class InstallerCommand extends Command
         $output->writeln('<info>🔗 Linking packages into vendor/...</info>');
         (new VendorLinker($store))->link($packages);
 
+        $this->dumpAutoload($output, $composerJson, $packages, $devMode, $devPackageNames);
+
+        $scriptRunner = new ScriptRunner();
+        $scriptRunner->runScripts($composerJson, $scriptEvent, $devMode);
+
+        $output->writeln('<info>✅ Post-install scripts completed!</info>');
+    }
+
+    /**
+     * Generates the autoloader and package manifests, then runs post-autoload-dump.
+     *
+     * @param string[] $devPackageNames Installed packages only needed by require-dev.
+     */
+    protected function dumpAutoload(OutputInterface $output, array $composerJson, array $packages, bool $devMode, array $devPackageNames): void
+    {
         $generator = new AutoloadGenerator();
 
         $output->writeln('<info>⚙️ Generating autoload files...</info>');
@@ -96,12 +111,7 @@ abstract class InstallerCommand extends Command
         // Pass both the packages and the root composer.json
         $generator->generatePackageManifests($packages, $composerJson, $devMode, $devPackageNames);
 
-        $output->writeln('<info>🔄 Running post-install scripts...</info>');
-        $scriptRunner = new ScriptRunner();
-
-        $scriptRunner->runScripts($composerJson, 'post-autoload-dump', $devMode);
-        $scriptRunner->runScripts($composerJson, $scriptEvent, $devMode);
-
-        $output->writeln('<info>✅ Post-install scripts completed!</info>');
+        $output->writeln('<info>🔄 Running post-autoload-dump scripts...</info>');
+        (new ScriptRunner())->runScripts($composerJson, 'post-autoload-dump', $devMode);
     }
 }

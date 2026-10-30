@@ -1,6 +1,7 @@
 #!/usr/bin/env php
 <?php
 
+use HichemTabTech\Pomposer\Console\DumpAutoloadCommand;
 use HichemTabTech\Pomposer\Console\InstallCommand;
 use HichemTabTech\Pomposer\Console\RemoveCommand;
 use HichemTabTech\Pomposer\Console\RequireCommand;
@@ -26,6 +27,7 @@ $app->add(new UpdateCommand);
 $app->add(new RequireCommand);
 $app->add(new RequireDevCommand);
 $app->add(new RemoveCommand);
+$app->add(new DumpAutoloadCommand);
 
 /** @noinspection PhpUnhandledExceptionInspection */
 $app->run();
