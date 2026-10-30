@@ -41,7 +41,7 @@ class AutoloadGenerator
         return str_starts_with($path, '/') || str_starts_with($path, '\\') || preg_match('#^[A-Za-z]:[/\\\\]#', $path) === 1;
     }
 
-    public function generate(array $packages, array $composerJson): void
+    public function generate(array $packages, array $composerJson, bool $devMode = true): void
     {
         $psr4 = [];
         $classmapPathsToScan = [];
@@ -54,6 +54,18 @@ class AutoloadGenerator
             $files,
             $this->projectRoot
         );
+
+        // Like Composer, only the root package's autoload-dev is used, and only in dev mode.
+        if ($devMode) {
+            $this->extractFromComposerJson(
+                $composerJson,
+                $psr4,
+                $classmapPathsToScan,
+                $files,
+                $this->projectRoot,
+                'autoload-dev'
+            );
+        }
 
         foreach ($packages as $package) {
             $name = $package['name'];
@@ -102,25 +114,26 @@ class AutoloadGenerator
         array &$psr4,
         array &$classmapPaths ,
         array &$files,
-        string $basePath = ""
+        string $basePath = "",
+        string $section = 'autoload'
     ): void
     {
-        if (isset($composerData['autoload']['psr-4'])) {
-            foreach ($composerData['autoload']['psr-4'] as $namespace => $relPaths) {
+        if (isset($composerData[$section]['psr-4'])) {
+            foreach ($composerData[$section]['psr-4'] as $namespace => $relPaths) {
                 foreach ((array) $relPaths as $relPath) {
                     $psr4[$namespace][] = $this->joinPaths($basePath, $relPath);
                 }
             }
         }
 
-        if (isset($composerData['autoload']['classmap'])) {
-            foreach ($composerData['autoload']['classmap'] as $relPath) {
+        if (isset($composerData[$section]['classmap'])) {
+            foreach ($composerData[$section]['classmap'] as $relPath) {
                 $classmapPaths[] = $this->joinPaths($basePath, $relPath);
             }
         }
 
-        if (isset($composerData['autoload']['files'])) {
-            foreach ($composerData['autoload']['files'] as $relPath) {
+        if (isset($composerData[$section]['files'])) {
+            foreach ($composerData[$section]['files'] as $relPath) {
                 $absPath = $this->joinPaths($basePath, $relPath);
                 if (file_exists($absPath)) {
                     $files[] = $absPath;
@@ -336,13 +349,15 @@ PHP;
      *
      * @param array $packages The list of all installed packages.
      * @param array $rootComposerJson The content of the root composer.json.
+     * @param bool $devMode Whether dev requirements are installed.
+     * @param string[] $devPackageNames Installed packages only needed by require-dev.
      */
-    public function generatePackageManifests(array $packages, array $rootComposerJson): void
+    public function generatePackageManifests(array $packages, array $rootComposerJson, bool $devMode = true, array $devPackageNames = []): void
     {
         $manifestJson = [
             'packages' => array_map(fn ($package) => $package + ['install-path' => '../' . $package['name']], $packages),
-            'dev' => true,
-            'dev-package-names' => [],
+            'dev' => $devMode,
+            'dev-package-names' => array_values($devPackageNames),
         ];
         $jsonContent = json_encode($manifestJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         $this->writeFile($this->joinPaths($this->vendorDir, 'composer', 'installed.json'), $jsonContent);
@@ -357,6 +372,7 @@ PHP;
                 'install_path' => $this->projectRoot . '/',
                 'aliases' => [],
                 'reference' => null,
+                'dev' => $devMode,
             ],
             'versions' => [],
         ];
@@ -373,6 +389,7 @@ PHP;
                 'install_path' => $installPath,
                 'aliases' => $package['aliases'] ?? [],
                 'reference' => $package['source']['reference'] ?? $package['dist']['reference'] ?? null,
+                'dev_requirement' => in_array($packageName, $devPackageNames, true),
             ];
         }
 

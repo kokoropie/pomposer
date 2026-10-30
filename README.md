@@ -54,9 +54,10 @@ pomposer install
 
 | Command | Description |
 |---|---|
-| `pomposer install` | Install from `composer.lock`, or resolve `composer.json` and write the lock if there is none. |
-| `pomposer update [packages...]` | Re-resolve from `composer.json` and rewrite `composer.lock`. With package names, only those are updated; other locked packages keep their version while it still satisfies the constraints. Aliases: `u`, `upgrade`. |
+| `pomposer install [--no-dev]` | Install from `composer.lock`, or resolve `composer.json` and write the lock if there is none. |
+| `pomposer update [packages...] [--no-dev]` | Re-resolve from `composer.json` and rewrite `composer.lock`. With package names, only those are updated; other locked packages keep their version while it still satisfies the constraints. Aliases: `u`, `upgrade`. |
 | `pomposer require <packages...>` | Add packages to `composer.json` and install them. Accepts `vendor/pkg`, `vendor/pkg:^1.0`, `vendor/pkg=^1.0` or `vendor/pkg ^1.0`; without a constraint, `^<major>.<minor>` of the latest stable version is used. `--no-update` only edits `composer.json`. On failure, `composer.json` and `composer.lock` are restored. Alias: `r`. |
+| `--no-dev` (install / update) | Skip `packages-dev` and the root `autoload-dev`; dev links are removed from `vendor/`, `installed.json` gets `"dev": false` and script handlers see `$event->isDevMode() === false`. `composer.lock` still lists the dev packages. |
 | `pomposer require --dev <packages...>` / `pomposer require-dev <packages...>` | Same as `require`, but adds the packages to `require-dev` (they end up in `packages-dev` in the lock). Alias: `rd`. |
 
 ---
@@ -285,7 +286,6 @@ Current limitations:
 * ❌ **Missing commands:** There is no `remove` or `dump-autoload` command yet.
 * ⚠️ **`composer.json` is re-encoded:** `require` rewrites `composer.json` with 4-space indentation, so custom formatting is not preserved.
 * ⚠️ **No `--with-dependencies` for partial updates:** `pomposer update <package>` keeps the package's dependencies locked unless their locked version no longer satisfies the new constraints.
-* ❌ **No `--no-dev`:** `require-dev` / `packages-dev` are always installed.
 
 **Dependency resolution**
 

@@ -58,9 +58,20 @@ abstract class InstallerCommand extends Command
 
     /**
      * @param string $scriptEvent The Composer script event to run after the autoload dump (e.g. post-install-cmd).
+     * @param bool $devMode Install require-dev packages and root autoload-dev (false = --no-dev).
      */
-    protected function installPackages(OutputInterface $output, LockParser $parser, array $composerJson, array $packages, string $scriptEvent): void
+    protected function installPackages(OutputInterface $output, LockParser $parser, array $composerJson, array $packages, string $scriptEvent, bool $devMode = true): void
     {
+        // composer.lock always keeps the dev packages; --no-dev only skips installing them.
+        $lockPackages = $packages;
+        $devPackageNames = $parser->getDevPackageNames();
+
+        if (!$devMode) {
+            $packages = array_values(array_filter($packages, fn ($package) => !in_array($package['name'], $devPackageNames, true)));
+            $devPackageNames = [];
+            $output->writeln('<info>🚫 Skipping ' . (count($lockPackages) - count($packages)) . ' dev package(s) (--no-dev)</info>');
+        }
+
         $store = new PackageStore();
         $installer = new PackageInstaller($store);
 
@@ -79,17 +90,17 @@ abstract class InstallerCommand extends Command
         $generator = new AutoloadGenerator();
 
         $output->writeln('<info>⚙️ Generating autoload files...</info>');
-        $generator->generate($packages, $composerJson);
+        $generator->generate($packages, $composerJson, $devMode);
 
         $output->writeln('<info>📦 Generating full package manifest set...</info>');
         // Pass both the packages and the root composer.json
-        $generator->generatePackageManifests($packages, $composerJson);
+        $generator->generatePackageManifests($packages, $composerJson, $devMode, $devPackageNames);
 
         $output->writeln('<info>🔄 Running post-install scripts...</info>');
         $scriptRunner = new ScriptRunner();
 
-        $scriptRunner->runScripts($composerJson, 'post-autoload-dump');
-        $scriptRunner->runScripts($composerJson, $scriptEvent);
+        $scriptRunner->runScripts($composerJson, 'post-autoload-dump', $devMode);
+        $scriptRunner->runScripts($composerJson, $scriptEvent, $devMode);
 
         $output->writeln('<info>✅ Post-install scripts completed!</info>');
     }

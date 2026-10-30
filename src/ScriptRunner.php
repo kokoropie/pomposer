@@ -4,7 +4,7 @@ namespace HichemTabTech\Pomposer;
 
 class ScriptRunner
 {
-    public function runScripts(array $composerJson, string $scriptKey): void
+    public function runScripts(array $composerJson, string $scriptKey, bool $devMode = true): void
     {
         if (!isset($composerJson['scripts'][$scriptKey])) {
             return;
@@ -23,11 +23,12 @@ class ScriptRunner
                 // Run it through a small bootstrap that passes a stub Composer\Script\Event,
                 // since handlers like Laravel's type-hint and use it.
                 passthru(sprintf(
-                    'php %s %s %s %s',
+                    'php %s %s %s %s %s',
                     escapeshellarg(__DIR__ . '/stubs/run-script.php.stub'),
                     escapeshellarg($class),
                     escapeshellarg($method),
-                    escapeshellarg($scriptKey)
+                    escapeshellarg($scriptKey),
+                    $devMode ? '1' : '0'
                 ));
 
             } elseif (str_starts_with($script, '@')) {

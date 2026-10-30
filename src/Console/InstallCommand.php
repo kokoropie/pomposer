@@ -6,6 +6,7 @@ use HichemTabTech\Pomposer\LockParser;
 use HichemTabTech\Pomposer\PackagistGateway;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class InstallCommand extends InstallerCommand
@@ -19,7 +20,8 @@ class InstallCommand extends InstallerCommand
     {
         $this
             ->setName('install')
-            ->setDescription('install composer packages');
+            ->setDescription('install composer packages')
+            ->addOption('no-dev', null, InputOption::VALUE_NONE, 'Skip require-dev packages and autoload-dev');
     }
 
     /**
@@ -38,7 +40,7 @@ class InstallCommand extends InstallerCommand
         $parser = new LockParser(new PackagistGateway());
         [$composerJson, $packages] = $parser->getPackages();
 
-        $this->installPackages($output, $parser, $composerJson, $packages, 'post-install-cmd');
+        $this->installPackages($output, $parser, $composerJson, $packages, 'post-install-cmd', !$input->getOption('no-dev'));
 
         $output->writeln('<info>✅ Pomposer install complete!</info>');
 

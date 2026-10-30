@@ -2,10 +2,11 @@
 
 /*
  * Runs a static Composer script handler (Class::method) in the project's context.
- * Usage: php run-script.php.stub <Class> <method> <event-name>   (cwd = project root)
+ * Usage: php run-script.php.stub <Class> <method> <event-name> <dev-mode 1|0>   (cwd = project root)
  */
 
 [, $class, $method, $eventName] = $argv;
+$devMode = ($argv[4] ?? '1') === '1';
 
 require __DIR__ . '/ComposerScriptEvent.php.stub';
 
@@ -17,6 +18,6 @@ $config = new Composer\Config([
     'bin-dir' => $vendorDir . '/bin',
 ]);
 
-$event = new Composer\Script\Event($eventName, new Composer\Composer($config), new Composer\IO\ConsoleIO(), true);
+$event = new Composer\Script\Event($eventName, new Composer\Composer($config), new Composer\IO\ConsoleIO(), $devMode);
 
 $class::$method($event);

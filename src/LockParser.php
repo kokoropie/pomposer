@@ -42,6 +42,8 @@ class LockParser
 
             $packages = $lock['packages'] ?? [];
             $packagesDev = $lock['packages-dev'] ?? [];
+            $this->devPackageNames = array_column($packagesDev, 'name');
+
             return [$composer, array_merge($packages, $packagesDev)];
         }
 
@@ -134,6 +136,16 @@ class LockParser
     public function wasResolved(): bool
     {
         return $this->wasResolved;
+    }
+
+    /**
+     * Names of the packages only needed by require-dev (packages-dev in the lock).
+     *
+     * @return string[]
+     */
+    public function getDevPackageNames(): array
+    {
+        return $this->devPackageNames;
     }
 
     /**

@@ -18,12 +18,11 @@ class InstalledVersions
     {
         $installed = self::getInstalled();
 
-        if ($includeDevRequirements) {
-            return isset($installed[$packageName]);
+        if (!isset($installed[$packageName])) {
+            return false;
         }
 
-        // This can be improved if we start tracking dev packages properly
-        return isset($installed[$packageName]);
+        return $includeDevRequirements || empty($installed[$packageName]['dev_requirement']);
     }
 
     public static function getVersion(string $packageName): ?string
