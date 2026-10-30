@@ -106,6 +106,33 @@ class ComposerJsonEditor
         $this->write($json);
     }
 
+    /**
+     * Removes packages from require and require-dev.
+     *
+     * @param string[] $names
+     * @return string[] The names that were actually required.
+     */
+    public function removeRequirements(array $names): array
+    {
+        $json = $this->read();
+        $removed = [];
+
+        foreach ($names as $name) {
+            $name = strtolower($name);
+
+            foreach (['require', 'require-dev'] as $key) {
+                if (isset($json->$key->$name)) {
+                    unset($json->$key->$name);
+                    $removed[] = $name;
+                }
+            }
+        }
+
+        $this->write($json);
+
+        return array_values(array_unique($removed));
+    }
+
     public function backup(): string
     {
         return file_get_contents($this->composerPath);

@@ -59,6 +59,7 @@ pomposer install
 | `pomposer require <packages...>` | Add packages to `composer.json` and install them. Accepts `vendor/pkg`, `vendor/pkg:^1.0`, `vendor/pkg=^1.0` or `vendor/pkg ^1.0`; without a constraint, `^<major>.<minor>` of the latest stable version is used. `--no-update` only edits `composer.json`. On failure, `composer.json` and `composer.lock` are restored. Alias: `r`. |
 | `--no-dev` (install / update) | Skip `packages-dev` and the root `autoload-dev`; dev links are removed from `vendor/`, `installed.json` gets `"dev": false` and script handlers see `$event->isDevMode() === false`. `composer.lock` still lists the dev packages. |
 | `pomposer require --dev <packages...>` / `pomposer require-dev <packages...>` | Same as `require`, but adds the packages to `require-dev` (they end up in `packages-dev` in the lock). Alias: `rd`. |
+| `pomposer remove <packages...>` | Remove packages from `require` / `require-dev` and uninstall them, along with dependencies nothing else needs; everything else stays locked. Supports `--no-update` and `--no-dev`. On failure, `composer.json` and `composer.lock` are restored. Aliases: `rm`, `uninstall`. |
 
 ---
 
@@ -283,8 +284,8 @@ Current limitations:
 
 **Commands & workflow**
 
-* ❌ **Missing commands:** There is no `remove` or `dump-autoload` command yet.
-* ⚠️ **`composer.json` is re-encoded:** `require` rewrites `composer.json` with 4-space indentation, so custom formatting is not preserved.
+* ❌ **Missing commands:** There is no `dump-autoload` command yet.
+* ⚠️ **`composer.json` is re-encoded:** `require` / `remove` rewrite `composer.json` with 4-space indentation, so custom formatting is not preserved.
 * ⚠️ **No `--with-dependencies` for partial updates:** `pomposer update <package>` keeps the package's dependencies locked unless their locked version no longer satisfies the new constraints.
 
 **Dependency resolution**

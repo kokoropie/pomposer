@@ -2,6 +2,7 @@
 <?php
 
 use HichemTabTech\Pomposer\Console\InstallCommand;
+use HichemTabTech\Pomposer\Console\RemoveCommand;
 use HichemTabTech\Pomposer\Console\RequireCommand;
 use HichemTabTech\Pomposer\Console\RequireDevCommand;
 use HichemTabTech\Pomposer\Console\UpdateCommand;
@@ -24,6 +25,7 @@ $app->add(new InstallCommand);
 $app->add(new UpdateCommand);
 $app->add(new RequireCommand);
 $app->add(new RequireDevCommand);
+$app->add(new RemoveCommand);
 
 /** @noinspection PhpUnhandledExceptionInspection */
 $app->run();
