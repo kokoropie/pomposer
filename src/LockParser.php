@@ -8,6 +8,12 @@ use Composer\Semver\VersionParser;
 
 class LockParser
 {
+    public const WITH_NO_DEPENDENCIES = 'none';
+    /** Also update dependencies of the listed packages, except root requirements (-w). */
+    public const WITH_DEPENDENCIES = 'direct';
+    /** Also update dependencies of the listed packages, including root requirements (-W). */
+    public const WITH_ALL_DEPENDENCIES = 'all';
+
     protected string $composerPath;
     protected string $lockPath;
 
@@ -17,6 +23,11 @@ class LockParser
     protected array $devPackageNames = [];
     protected bool $wasResolved = false;
     protected string $minimumStability = 'stable';
+    protected string $withDependencies = self::WITH_NO_DEPENDENCIES;
+    /** @var string[] Root requirement names (require + require-dev), lowercase. */
+    protected array $rootRequirements = [];
+    /** @var string[] Packages being updated by a partial update, lowercase. */
+    protected array $updating = [];
     protected PackagistGateway $packagist;
 
     public function __construct(PackagistGateway $packagist, string $composerPath = 'composer.json', string $lockPath = 'composer.lock')
@@ -55,13 +66,28 @@ class LockParser
      *
      * @param string[] $only Packages to update. Other locked packages keep their version while it still
      *                       satisfies the constraints. Empty = update everything.
+     * @param string $withDependencies One of the WITH_* constants: also update the dependencies of $only.
      */
-    public function update(array $only = []): array
+    public function update(array $only = [], string $withDependencies = self::WITH_NO_DEPENDENCIES): array
     {
         $composer = $this->readComposerJson();
+        $this->withDependencies = $withDependencies;
+        $this->rootRequirements = array_map('strtolower', array_keys(($composer['require'] ?? []) + ($composer['require-dev'] ?? [])));
 
         if ($only && file_exists($this->lockPath)) {
             $lock = $this->readLock();
+
+            if ($withDependencies !== self::WITH_NO_DEPENDENCIES) {
+                $expanded = $this->expandWithDependencies($lock, $only);
+
+                if ($extra = array_diff($expanded, $only)) {
+                    echo "🔍 Also updating dependencies: " . implode(', ', $extra) . "\n";
+                }
+
+                $only = $expanded;
+            }
+
+            $this->updating = $only;
 
             foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
                 if (!in_array(strtolower($package['name']), $only, true)) {
@@ -77,6 +103,49 @@ class LockParser
         }
 
         return $this->resolveAll($composer);
+    }
+
+    /**
+     * Adds the locked dependencies of $only, recursively. Root requirements are only followed with -W.
+     *
+     * @param string[] $only
+     * @return string[]
+     */
+    protected function expandWithDependencies(array $lock, array $only): array
+    {
+        $byName = [];
+        foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
+            $byName[strtolower($package['name'])] = $package;
+        }
+
+        $result = array_fill_keys($only, true);
+        $queue = $only;
+
+        while ($queue) {
+            $name = array_shift($queue);
+
+            foreach (array_keys($byName[$name]['require'] ?? []) as $dep) {
+                $dep = strtolower($dep);
+
+                if (isset($result[$dep]) || !isset($byName[$dep]) || !$this->followsDependency($dep)) {
+                    continue;
+                }
+
+                $result[$dep] = true;
+                $queue[] = $dep;
+            }
+        }
+
+        return array_keys($result);
+    }
+
+    protected function followsDependency(string $dep): bool
+    {
+        return match ($this->withDependencies) {
+            self::WITH_ALL_DEPENDENCIES => true,
+            self::WITH_DEPENDENCIES => !in_array($dep, $this->rootRequirements, true),
+            default => false,
+        };
     }
 
     protected function readComposerJson(): array
@@ -108,8 +177,8 @@ class LockParser
     {
         $this->minimumStability = $composer['minimum-stability'] ?? 'stable';
 
-        $requires = $composer['require'] ?? [];
-        $requiresDev = $composer['require-dev'] ?? [];
+        $requires = $this->updatingFirst($composer['require'] ?? []);
+        $requiresDev = $this->updatingFirst($composer['require-dev'] ?? []);
 
         foreach ($requires as $name => $constraint) {
             if (!str_contains($name, '/')) continue; // skip php, ext-*, lib-*
@@ -128,6 +197,17 @@ class LockParser
         $this->wasResolved = true;
 
         return [$composer, array_values($this->resolved)];
+    }
+
+    /**
+     * Resolves the packages being updated before the locked ones, so that with -w/-W their
+     * dependencies are unlocked before another locked package reaches (and keeps) them.
+     */
+    protected function updatingFirst(array $requires): array
+    {
+        $first = array_filter($requires, fn ($name) => in_array(strtolower($name), $this->updating, true), ARRAY_FILTER_USE_KEY);
+
+        return $first + $requires;
     }
 
     /**
@@ -196,6 +276,14 @@ class LockParser
         }
 
         echo "    ➡️  Best version found: {$bestVersion['version']}\n";
+
+        // Packages that were not locked yet (e.g. just required) have no lock entry to expand from:
+        // unlock their dependencies as they are discovered.
+        foreach (array_keys($bestVersion['require'] ?? []) as $dep) {
+            if (isset($this->locked[$dep]) && !isset($this->resolved[$dep]) && $this->followsDependency(strtolower($dep))) {
+                unset($this->locked[$dep]);
+            }
+        }
 
         $this->resolved[$package] = [
             'name' => $package,

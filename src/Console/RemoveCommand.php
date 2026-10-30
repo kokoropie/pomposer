@@ -28,7 +28,10 @@ class RemoveCommand extends InstallerCommand
             ->addArgument('packages', InputArgument::IS_ARRAY | InputArgument::REQUIRED, 'Packages to remove')
             ->addOption('dev', null, InputOption::VALUE_NONE, 'Accepted for Composer compatibility; packages are removed from both require and require-dev')
             ->addOption('no-update', null, InputOption::VALUE_NONE, 'Only update composer.json, do not resolve or install')
-            ->addOption('no-dev', null, InputOption::VALUE_NONE, 'Skip installing require-dev packages and autoload-dev (they are still locked)');
+            ->addOption('no-dev', null, InputOption::VALUE_NONE, 'Skip installing require-dev packages and autoload-dev (they are still locked)')
+            ->addOption('update-with-dependencies', null, InputOption::VALUE_NONE, 'Alias of --with-dependencies')
+            ->addOption('update-with-all-dependencies', null, InputOption::VALUE_NONE, 'Alias of --with-all-dependencies')
+            ->addWithDependenciesOptions();
     }
 
     /**
@@ -68,7 +71,7 @@ class RemoveCommand extends InstallerCommand
         try {
             // Keep everything else locked; the removed packages and dependencies nothing needs anymore drop out.
             $parser = new LockParser($packagist);
-            [$composerJson, $packages] = $parser->update($removed);
+            [$composerJson, $packages] = $parser->update($removed, $this->withDependencies($input));
 
             $this->installPackages($output, $parser, $composerJson, $packages, 'post-update-cmd', !$input->getOption('no-dev'));
         } catch (Throwable $e) {

@@ -27,7 +27,10 @@ class RequireCommand extends InstallerCommand
             ->setDescription('add packages to composer.json and install them')
             ->addArgument('packages', InputArgument::IS_ARRAY | InputArgument::REQUIRED, 'Packages to require, optionally with a constraint (e.g. vendor/package:^1.0)')
             ->addOption('dev', null, InputOption::VALUE_NONE, 'Add the packages to require-dev')
-            ->addOption('no-update', null, InputOption::VALUE_NONE, 'Only update composer.json, do not resolve or install');
+            ->addOption('no-update', null, InputOption::VALUE_NONE, 'Only update composer.json, do not resolve or install')
+            ->addOption('update-with-dependencies', null, InputOption::VALUE_NONE, 'Alias of --with-dependencies')
+            ->addOption('update-with-all-dependencies', null, InputOption::VALUE_NONE, 'Alias of --with-all-dependencies')
+            ->addWithDependenciesOptions();
     }
 
     protected function isDev(InputInterface $input): bool
@@ -68,7 +71,7 @@ class RequireCommand extends InstallerCommand
 
         try {
             $parser = new LockParser($packagist);
-            [$composerJson, $packages] = $parser->update(array_keys($requirements));
+            [$composerJson, $packages] = $parser->update(array_keys($requirements), $this->withDependencies($input));
 
             $this->installPackages($output, $parser, $composerJson, $packages, 'post-update-cmd');
         } catch (Throwable $e) {

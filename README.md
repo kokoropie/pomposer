@@ -57,6 +57,8 @@ pomposer install
 | `pomposer install [--no-dev]` | Install from `composer.lock`, or resolve `composer.json` and write the lock if there is none. |
 | `pomposer update [packages...] [--no-dev]` | Re-resolve from `composer.json` and rewrite `composer.lock`. With package names, only those are updated; other locked packages keep their version while it still satisfies the constraints. Aliases: `u`, `upgrade`. |
 | `pomposer require <packages...>` | Add packages to `composer.json` and install them. Accepts `vendor/pkg`, `vendor/pkg:^1.0`, `vendor/pkg=^1.0` or `vendor/pkg ^1.0`; without a constraint, `^<major>.<minor>` of the latest stable version is used. `--no-update` only edits `composer.json`. On failure, `composer.json` and `composer.lock` are restored. Alias: `r`. |
+| `-w`, `--with-dependencies` (update / require / remove) | Also update the dependencies of the listed packages, recursively, except those that are root requirements. `require` / `remove` also accept `--update-with-dependencies`. |
+| `-W`, `--with-all-dependencies` (update / require / remove) | Same as `-w`, but root requirements are updated too. `require` / `remove` also accept `--update-with-all-dependencies`. |
 | `--no-dev` (install / update) | Skip `packages-dev` and the root `autoload-dev`; dev links are removed from `vendor/`, `installed.json` gets `"dev": false` and script handlers see `$event->isDevMode() === false`. `composer.lock` still lists the dev packages. |
 | `pomposer require --dev <packages...>` / `pomposer require-dev <packages...>` | Same as `require`, but adds the packages to `require-dev` (they end up in `packages-dev` in the lock). Alias: `rd`. |
 | `pomposer remove <packages...>` | Remove packages from `require` / `require-dev` and uninstall them, along with dependencies nothing else needs; everything else stays locked. Supports `--no-update` and `--no-dev`. On failure, `composer.json` and `composer.lock` are restored. Aliases: `rm`, `uninstall`. |
@@ -286,7 +288,7 @@ Current limitations:
 **Commands & workflow**
 
 * ⚠️ **`composer.json` is re-encoded:** `require` / `remove` rewrite `composer.json` with 4-space indentation, so custom formatting is not preserved.
-* ⚠️ **No `--with-dependencies` for partial updates:** `pomposer update <package>` keeps the package's dependencies locked unless their locked version no longer satisfies the new constraints.
+* ⚠️ **Lenient partial updates:** Without `-w`/`-W`, a locked dependency whose version no longer satisfies the new constraints is re-resolved anyway instead of failing like Composer.
 
 **Dependency resolution**
 

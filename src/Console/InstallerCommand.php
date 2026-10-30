@@ -13,6 +13,7 @@ use HichemTabTech\Pomposer\ScriptRunner;
 use HichemTabTech\Pomposer\VendorLinker;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
@@ -54,6 +55,27 @@ abstract class InstallerCommand extends Command
         $output->writeln('<fg=blue>👉 If you have ideas, experience, or just curiosity — please join the discussion and contribute at: https://github.com/HichemTab-tech/pomposer/discussions/4</>');
         $output->writeln('<fg=cyan>https://github.com/HichemTab-tech/pomposer</>' . PHP_EOL);
 
+    }
+
+    protected function addWithDependenciesOptions(): static
+    {
+        return $this
+            ->addOption('with-dependencies', 'w', InputOption::VALUE_NONE, 'Also update dependencies of the listed packages, except those that are root requirements')
+            ->addOption('with-all-dependencies', 'W', InputOption::VALUE_NONE, 'Also update dependencies of the listed packages, including root requirements');
+    }
+
+    protected function withDependencies(InputInterface $input): string
+    {
+        return match (true) {
+            $this->optionEnabled($input, 'with-all-dependencies') || $this->optionEnabled($input, 'update-with-all-dependencies') => LockParser::WITH_ALL_DEPENDENCIES,
+            $this->optionEnabled($input, 'with-dependencies') || $this->optionEnabled($input, 'update-with-dependencies') => LockParser::WITH_DEPENDENCIES,
+            default => LockParser::WITH_NO_DEPENDENCIES,
+        };
+    }
+
+    private function optionEnabled(InputInterface $input, string $name): bool
+    {
+        return $input->hasOption($name) && $input->getOption($name);
     }
 
     /**

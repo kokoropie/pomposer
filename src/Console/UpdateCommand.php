@@ -24,7 +24,8 @@ class UpdateCommand extends InstallerCommand
             ->setAliases(['u', 'upgrade'])
             ->setDescription('re-resolve dependencies from composer.json and update composer.lock')
             ->addArgument('packages', InputArgument::IS_ARRAY | InputArgument::OPTIONAL, 'Packages to update (default: all)')
-            ->addOption('no-dev', null, InputOption::VALUE_NONE, 'Skip installing require-dev packages and autoload-dev (they are still locked)');
+            ->addOption('no-dev', null, InputOption::VALUE_NONE, 'Skip installing require-dev packages and autoload-dev (they are still locked)')
+            ->addWithDependenciesOptions();
     }
 
     /**
@@ -45,7 +46,7 @@ class UpdateCommand extends InstallerCommand
             : '<info>🔍 Updating all dependencies...</info>');
 
         $parser = new LockParser(new PackagistGateway());
-        [$composerJson, $packages] = $parser->update($only);
+        [$composerJson, $packages] = $parser->update($only, $this->withDependencies($input));
 
         $this->installPackages($output, $parser, $composerJson, $packages, 'post-update-cmd', !$input->getOption('no-dev'));
 
