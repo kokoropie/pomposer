@@ -155,7 +155,10 @@ trait CommandsUtils
         if (is_link($path) || is_file($path)) {
             unlink($path);
         } elseif (is_dir($path)) {
-            array_map([$this, 'removeRecursive'], glob($path . '/*', GLOB_MARK));
+            // scandir() rather than glob('*'), which skips dotfiles and would leave rmdir() failing.
+            foreach (array_diff(scandir($path), ['.', '..']) as $entry) {
+                $this->removeRecursive($path . DIRECTORY_SEPARATOR . $entry);
+            }
             rmdir($path);
         }
     }

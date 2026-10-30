@@ -4,11 +4,18 @@ namespace HichemTabTech\Pomposer;
 
 class ScriptRunner
 {
-    public function runScripts(array $composerJson, string $scriptKey): void
+    public function runScripts(array $composerJson, string $scriptKey, bool $devMode = true): void
     {
         if (!isset($composerJson['scripts'][$scriptKey])) {
             return;
         }
+
+        // Like Composer, make vendor/bin available to scripts (e.g. "phpunit" in post-install-cmd).
+        $binDir = getcwd() . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'bin';
+        if (is_dir($binDir) && !str_starts_with((string) getenv('PATH'), $binDir . PATH_SEPARATOR)) {
+            putenv('PATH=' . $binDir . PATH_SEPARATOR . getenv('PATH'));
+        }
+        putenv('COMPOSER_RUNTIME_BIN_DIR=' . $binDir);
 
         foreach ($composerJson['scripts'][$scriptKey] as $script) {
             if (str_starts_with($script, '@php ')) {
@@ -20,14 +27,16 @@ class ScriptRunner
                 [, $class, $method] = $matches;
                 echo "[Pomposer] Calling $class::$method() via separate process\n";
 
-                // We create a small bootstrap script to execute the call in the project's context.
-                $phpCode = sprintf(
-                    "require_once __DIR__ . '/vendor/autoload.php'; %s::%s(null);",
-                    addslashes($class), // Use addslashes to be safe
-                    addslashes($method)
-                );
-
-                passthru("php -r \"$phpCode\"");
+                // Run it through a small bootstrap that passes a stub Composer\Script\Event,
+                // since handlers like Laravel's type-hint and use it.
+                passthru(sprintf(
+                    'php %s %s %s %s %s',
+                    escapeshellarg(__DIR__ . '/stubs/run-script.php.stub'),
+                    escapeshellarg($class),
+                    escapeshellarg($method),
+                    escapeshellarg($scriptKey),
+                    $devMode ? '1' : '0'
+                ));
 
             } elseif (str_starts_with($script, '@')) {
                 // Aliases like @composer or @some-custom-script

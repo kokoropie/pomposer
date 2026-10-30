@@ -11,19 +11,37 @@ class AutoloadGenerator
 {
     protected string $vendorDir;
     protected string $projectRoot;
+    protected string $absVendorDir;
 
     public function __construct(string $vendorDir = 'vendor')
     {
-        $this->vendorDir = rtrim($vendorDir, '/');
-        $this->projectRoot = getcwd();
+        $this->vendorDir = rtrim($vendorDir, '/\\');
+        $this->projectRoot = $this->normalizePath(getcwd());
+        $this->absVendorDir = $this->isAbsolutePath($this->vendorDir)
+            ? $this->normalizePath($this->vendorDir)
+            : $this->joinPaths($this->projectRoot, $this->vendorDir);
     }
 
     private function joinPaths(...$paths): string
     {
-        return preg_replace('#[/\\\\]+#', DIRECTORY_SEPARATOR, implode(DIRECTORY_SEPARATOR, $paths));
+        return $this->normalizePath(implode('/', $paths));
     }
 
-    public function generate(array $packages, array $composerJson): void
+    private function normalizePath(string $path): string
+    {
+        $path = preg_replace('#[/\\\\]+#', '/', $path);
+        // Drop "./" segments so generated paths stay clean (e.g. "src/./Foo" -> "src/Foo")
+        $path = preg_replace(['#(?<=/)\./#', '#/\.$#'], '', $path);
+
+        return strlen($path) > 1 ? rtrim($path, '/') : $path;
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, '/') || str_starts_with($path, '\\') || preg_match('#^[A-Za-z]:[/\\\\]#', $path) === 1;
+    }
+
+    public function generate(array $packages, array $composerJson, bool $devMode = true): void
     {
         $psr4 = [];
         $classmapPathsToScan = [];
@@ -37,12 +55,25 @@ class AutoloadGenerator
             $this->projectRoot
         );
 
+        // Like Composer, only the root package's autoload-dev is used, and only in dev mode.
+        if ($devMode) {
+            $this->extractFromComposerJson(
+                $composerJson,
+                $psr4,
+                $classmapPathsToScan,
+                $files,
+                $this->projectRoot,
+                'autoload-dev'
+            );
+        }
+
         foreach ($packages as $package) {
             $name = $package['name'];
             $version = $package['version'];
-            [$vendor, $pkg] = explode('/', $name);
 
-            $path = (new PackageStore())->getPackagePath($vendor, $pkg, $version);
+            // Resolve through the vendor/<vendor>/<package> symlink (see VendorLinker), not the store,
+            // so autoload paths stay inside the project and IDEs can follow them.
+            $path = $this->joinPaths($this->absVendorDir, $name);
             $composerPath = $path . '/composer.json';
 
             if (!file_exists($composerPath)) {
@@ -83,25 +114,26 @@ class AutoloadGenerator
         array &$psr4,
         array &$classmapPaths ,
         array &$files,
-        string $basePath = ""
+        string $basePath = "",
+        string $section = 'autoload'
     ): void
     {
-        if (isset($composerData['autoload']['psr-4'])) {
-            foreach ($composerData['autoload']['psr-4'] as $namespace => $relPaths) {
+        if (isset($composerData[$section]['psr-4'])) {
+            foreach ($composerData[$section]['psr-4'] as $namespace => $relPaths) {
                 foreach ((array) $relPaths as $relPath) {
                     $psr4[$namespace][] = $this->joinPaths($basePath, $relPath);
                 }
             }
         }
 
-        if (isset($composerData['autoload']['classmap'])) {
-            foreach ($composerData['autoload']['classmap'] as $relPath) {
+        if (isset($composerData[$section]['classmap'])) {
+            foreach ($composerData[$section]['classmap'] as $relPath) {
                 $classmapPaths[] = $this->joinPaths($basePath, $relPath);
             }
         }
 
-        if (isset($composerData['autoload']['files'])) {
-            foreach ($composerData['autoload']['files'] as $relPath) {
+        if (isset($composerData[$section]['files'])) {
+            foreach ($composerData[$section]['files'] as $relPath) {
                 $absPath = $this->joinPaths($basePath, $relPath);
                 if (file_exists($absPath)) {
                     $files[] = $absPath;
@@ -120,12 +152,43 @@ class AutoloadGenerator
         file_put_contents($path, $content);
     }
 
+    /**
+     * Exports a value with absolute project/vendor paths rewritten to \$baseDir / \$vendorDir,
+     * like Composer does, so the generated files stay portable and point through vendor/.
+     */
+    protected function exportWithPathVars(mixed $value): string
+    {
+        $export = var_export($value, true);
+
+        foreach (['$vendorDir' => $this->absVendorDir, '$baseDir' => $this->projectRoot] as $var => $dir) {
+            $quoted = preg_quote(substr(var_export($dir, true), 1, -1), '#');
+            $export = preg_replace_callback(
+                "#'$quoted((?:/[^']*)?)'#",
+                fn ($m) => $m[1] === '' ? $var : $var . ' . ' . var_export($m[1], true),
+                $export
+            );
+        }
+
+        return $export;
+    }
+
+    protected function pathVarsHeader(): string
+    {
+        return <<<'PHP'
+$vendorDir = dirname(__DIR__);
+$baseDir = dirname($vendorDir);
+PHP;
+    }
+
     protected function buildPsr4(array $map): string
     {
-        $export = var_export($map, true);
+        $export = $this->exportWithPathVars($map);
+        $header = $this->pathVarsHeader();
 
         return <<<PHP
 <?php
+
+$header
 
 return $export;
 
@@ -137,23 +200,21 @@ PHP;
         $map = [];
 
         foreach ($paths as $path) {
-            $realPath = realpath($path);
-
-            if ($realPath === false) {
+            // Deliberately not realpath(): that would resolve the vendor symlinks back into the store.
+            if (!file_exists($path)) {
                 continue;
             }
 
-            if (is_file($realPath)) {
-                $class = $this->extractClassNameFromFile($realPath);
-                if ($class) {
-                    $map[$class] = $realPath;
+            if (is_file($path)) {
+                foreach ($this->extractClassNamesFromFile($path) as $class) {
+                    $map[$class] = $path;
                 }
                 continue;
             }
 
-            if (is_dir($realPath)) {
+            if (is_dir($path)) {
                 $iterator = new RecursiveIteratorIterator(
-                    new RecursiveDirectoryIterator($realPath, FilesystemIterator::SKIP_DOTS),
+                    new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
                     RecursiveIteratorIterator::LEAVES_ONLY
                 );
 
@@ -162,24 +223,25 @@ PHP;
                         continue;
                     }
 
-                    $filePath = $file->getRealPath();
-                    $class = $this->extractClassNameFromFile($filePath);
-                    if ($class) {
+                    $filePath = $this->normalizePath($file->getPathname());
+                    foreach ($this->extractClassNamesFromFile($filePath) as $class) {
                         $map[$class] = $filePath;
                     }
                 }
             }
         }
 
-        $map['Composer\\Autoload\\ClassLoader'] = $this->joinPaths($this->projectRoot, $this->vendorDir, 'composer', 'ClassLoader.php');
+        $map['Composer\\Autoload\\ClassLoader'] = $this->joinPaths($this->absVendorDir, 'composer', 'ClassLoader.php');
+        $map['Composer\\InstalledVersions'] = $this->joinPaths($this->absVendorDir, 'composer', 'InstalledVersions.php');
 
         ksort($map);
-        $export = var_export($map, true);
+        $export = $this->exportWithPathVars($map);
+        $header = $this->pathVarsHeader();
 
         return <<<PHP
 <?php
 
-\$baseDir = dirname(dirname(__DIR__));
+$header
 
 return $export;
 
@@ -188,15 +250,20 @@ PHP;
 
     protected function buildFilesAutoload(array $files): string
     {
-        $entries = '';
+        $map = [];
         foreach ($files as $file) {
-            $escaped = var_export($file, true);
-            $id = md5($file);
-            $entries .= "    \$require('$id', $escaped);\n";
+            // Hash the vendor-relative path so the id is stable across machines/stores.
+            $map[md5(str_replace($this->projectRoot, '', $file))] = $file;
         }
+        $export = $this->exportWithPathVars($map);
+        $header = $this->pathVarsHeader();
 
         return <<<PHP
 <?php
+
+$header
+
+\$files = $export;
 
 \$GLOBALS['__composer_autoload_files'] = \$GLOBALS['__composer_autoload_files'] ?? [];
 
@@ -207,7 +274,9 @@ PHP;
     }
 }, null, null);
 
-$entries
+foreach (\$files as \$fileIdentifier => \$file) {
+    \$require(\$fileIdentifier, \$file);
+}
 
 PHP;
     }
@@ -243,19 +312,83 @@ require __DIR__ . '/composer/autoload_files.php';
 PHP;
     }
 
-    protected function extractClassNameFromFile(string $file): ?string
+    /**
+     * Returns every class, interface, trait and enum declared in a file, using PHP's tokenizer so that
+     * one-line files, several namespaces/classes per file, comments, strings, Foo::class and
+     * anonymous classes are handled correctly.
+     *
+     * @return string[]
+     */
+    protected function extractClassNamesFromFile(string $file): array
     {
-        $contents = file_get_contents($file);
+        $contents = @file_get_contents($file);
 
-        // Match namespace
-        $namespace = '';
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $nsMatch)) {
-            $namespace = trim($nsMatch[1]) . '\\';
+        // Cheap pre-check so files without any declaration are not tokenized.
+        if ($contents === false || !preg_match('{\b(?:class|interface|trait|enum)\s}i', $contents)) {
+            return [];
         }
 
-        // Match class/interface/trait/enum
-        if (preg_match('/^\s*(?:\b(?:final|abstract|readonly)\b\s+)*\b(class|interface|trait|enum)\b\s+([a-zA-Z0-9_]+)/mi', $contents, $classMatch)) {
-            return $namespace . $classMatch[2];
+        $tokens = token_get_all($contents);
+        $count = count($tokens);
+        $classes = [];
+        $namespace = '';
+        $previous = null;
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (!is_array($token)) {
+                $previous = $token;
+                continue;
+            }
+
+            $id = $token[0];
+
+            if ($id === T_WHITESPACE || $id === T_COMMENT || $id === T_DOC_COMMENT) {
+                continue;
+            }
+
+            if ($id === T_HALT_COMPILER) {
+                break;
+            }
+
+            if ($id === T_NAMESPACE) {
+                // "namespace Foo\Bar;" or "namespace Foo\Bar {"; "namespace {" is the global namespace.
+                $next = $this->nextSignificantToken($tokens, $i);
+                $namespace = is_array($next) && in_array($next[0], [T_STRING, T_NAME_QUALIFIED], true)
+                    ? $next[1] . '\\'
+                    : '';
+            } elseif (
+                in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)
+                && $previous !== T_DOUBLE_COLON // Foo::class
+                && $previous !== T_NEW          // new class { ... }
+            ) {
+                $next = $this->nextSignificantToken($tokens, $i);
+
+                if (is_array($next) && $next[0] === T_STRING) {
+                    $classes[] = $namespace . $next[1];
+                }
+            }
+
+            $previous = $id;
+        }
+
+        return $classes;
+    }
+
+    /**
+     * @return array|string|null The next token that is not whitespace or a comment.
+     */
+    private function nextSignificantToken(array $tokens, int $index): array|string|null
+    {
+        $count = count($tokens);
+
+        for ($i = $index + 1; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (!is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                return $token;
+            }
         }
 
         return null;
@@ -278,13 +411,15 @@ PHP;
      *
      * @param array $packages The list of all installed packages.
      * @param array $rootComposerJson The content of the root composer.json.
+     * @param bool $devMode Whether dev requirements are installed.
+     * @param string[] $devPackageNames Installed packages only needed by require-dev.
      */
-    public function generatePackageManifests(array $packages, array $rootComposerJson): void
+    public function generatePackageManifests(array $packages, array $rootComposerJson, bool $devMode = true, array $devPackageNames = []): void
     {
         $manifestJson = [
-            'packages' => $packages,
-            'dev' => true,
-            'dev-package-names' => [],
+            'packages' => array_map(fn ($package) => $package + ['install-path' => '../' . $package['name']], $packages),
+            'dev' => $devMode,
+            'dev-package-names' => array_values($devPackageNames),
         ];
         $jsonContent = json_encode($manifestJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         $this->writeFile($this->joinPaths($this->vendorDir, 'composer', 'installed.json'), $jsonContent);
@@ -296,9 +431,10 @@ PHP;
                 'version' => $rootComposerJson['version'] ?? 'dev-main',
                 'pretty_version' => $rootComposerJson['version'] ?? 'dev-main',
                 'type' => 'project',
-                'install_path' => $this->projectRoot,
+                'install_path' => $this->projectRoot . '/',
                 'aliases' => [],
                 'reference' => null,
+                'dev' => $devMode,
             ],
             'versions' => [],
         ];
@@ -306,21 +442,22 @@ PHP;
         foreach ($packages as $package) {
             $packageName = $package['name'];
 
-            $fakeInstallPath = $this->joinPaths($this->vendorDir, $packageName);
+            $installPath = $this->joinPaths($this->absVendorDir, $packageName);
 
             $installedPhp['versions'][$packageName] = [
                 'pretty_version' => $package['version'],
                 'version' => $package['version_normalized'] ?? $package['version'],
                 'type' => $package['type'] ?? 'library',
-                'install_path' => $fakeInstallPath, // Use the calculated fake path
+                'install_path' => $installPath,
                 'aliases' => $package['aliases'] ?? [],
                 'reference' => $package['source']['reference'] ?? $package['dist']['reference'] ?? null,
+                'dev_requirement' => in_array($packageName, $devPackageNames, true),
             ];
         }
 
         $installedPhp['versions'][$rootPackageName] = $installedPhp['root'];
 
-        $phpContent = '<?php return ' . var_export($installedPhp, true) . ';';
+        $phpContent = "<?php\n\n" . $this->pathVarsHeader() . "\n\nreturn " . $this->exportWithPathVars($installedPhp) . ";\n";
         $this->writeFile($this->joinPaths($this->vendorDir, 'composer', 'installed.php'), $phpContent);
 
         $this->writeFile(
