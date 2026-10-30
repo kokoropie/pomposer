@@ -21,7 +21,7 @@ Every `composer install` duplicates packages per project, eating up disk space a
 
 ## How It Works
 
-1.  **Read `composer.lock`** (or falls back to `composer.json` with its own resolver).
+1.  **Read `composer.lock`** (or falls back to `composer.json` with its own resolver, then **writes a Composer-compatible `composer.lock`** so later installs are reproducible).
 2.  **Download and cache packages** to the global store at `~/.pomposer-store`.
 3.  **Read the full `composer.json` from within each package** to gather all metadata (autoloading rules, scripts, and framework providers).
 4.  **Symlink each package into `vendor/`** (`vendor/<vendor>/<package>` → `~/.pomposer-store/<vendor>/<package>/<version>`), pnpm-style, so IDEs (PhpStorm, Intelephense, …) index `vendor/` as usual.
@@ -128,7 +128,7 @@ pomposer install
 
 It will:
 
-* Resolve dependencies (even if no `composer.lock`)
+* Resolve dependencies (even if no `composer.lock`) and write a `composer.lock`
 * Download and cache each package version in `~/.pomposer-store`
 * Symlink each package into your `vendor/` folder (e.g. `vendor/monolog/monolog` → `~/.pomposer-store/monolog/monolog/3.9.0`)
 * Generate a working autoloader
@@ -272,7 +272,7 @@ Current limitations:
 **Commands & workflow**
 
 * ❌ **`install` only:** There is no `update`, `require`, `remove` or `dump-autoload` command yet.
-* ❌ **No lock file generation:** Without a `composer.lock`, Pomposer resolves versions itself but does not write a lock file, so installs are not reproducible.
+* ⚠️ **No `update` for an existing lock:** If `composer.json` changes, Pomposer warns that `composer.lock` is out of date but still installs from it; delete the lock to re-resolve.
 * ❌ **No `--no-dev`:** `require-dev` / `packages-dev` are always installed.
 
 **Dependency resolution**

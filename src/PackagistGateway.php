@@ -47,8 +47,42 @@ class PackagistGateway
             throw new RuntimeException("Failed to decode JSON metadata for $name. Error: " . json_last_error_msg());
         }
 
-        $this->cache[$name] = $data['packages'][$name] ?? [];
+        $versions = $data['packages'][$name] ?? [];
+
+        if (($data['minified'] ?? null) === 'composer/2.0') {
+            $versions = $this->expandMinified($versions);
+        }
+
+        $this->cache[$name] = $versions;
 
         return $this->cache[$name];
+    }
+
+    /**
+     * Expands Packagist's minified p2 metadata, where each version only lists the keys
+     * that differ from the previous one ("__unset" removes a key).
+     */
+    protected function expandMinified(array $versions): array
+    {
+        $expanded = [];
+        $previous = null;
+
+        foreach ($versions as $version) {
+            if ($previous === null) {
+                $previous = $version;
+            } else {
+                foreach ($version as $key => $value) {
+                    if ($value === '__unset') {
+                        unset($previous[$key]);
+                    } else {
+                        $previous[$key] = $value;
+                    }
+                }
+            }
+
+            $expanded[] = $previous;
+        }
+
+        return $expanded;
     }
 }

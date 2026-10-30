@@ -5,6 +5,7 @@ namespace HichemTabTech\Pomposer\Console;
 use HichemTabTech\Pomposer\AutoloadGenerator;
 use HichemTabTech\Pomposer\Concerns\CommandsUtils;
 use HichemTabTech\Pomposer\Concerns\ConfiguresPrompts;
+use HichemTabTech\Pomposer\LockFile;
 use HichemTabTech\Pomposer\LockParser;
 use HichemTabTech\Pomposer\PackageInstaller;
 use HichemTabTech\Pomposer\PackageStore;
@@ -99,6 +100,11 @@ class InstallCommand extends Command
 
         foreach ($packages as $pkg) {
             $installer->install($pkg);
+        }
+
+        if ($parser->wasResolved()) {
+            $output->writeln('<info>🔒 Writing composer.lock...</info>');
+            (new LockFile())->write($composerJson, ...$parser->getResolvedPackages());
         }
 
         $output->writeln('<info>🔗 Linking packages into vendor/...</info>');

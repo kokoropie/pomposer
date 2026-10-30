@@ -11,6 +11,8 @@ class LockParser
     protected string $lockPath;
 
     protected array $resolved = [];
+    protected array $devPackageNames = [];
+    protected bool $wasResolved = false;
     protected PackagistGateway $packagist;
 
     public function __construct(PackagistGateway $packagist, string $composerPath = 'composer.json', string $lockPath = 'composer.lock')
@@ -26,6 +28,11 @@ class LockParser
 
         if (file_exists($this->lockPath)) {
             $lock = json_decode(file_get_contents($this->lockPath), true);
+
+            if (isset($lock['content-hash']) && $lock['content-hash'] !== LockFile::contentHash($composer)) {
+                echo "⚠️  composer.lock is not up to date with the latest changes in composer.json. Delete it to re-resolve.\n";
+            }
+
             $packages = $lock['packages'] ?? [];
             $packagesDev = $lock['packages-dev'] ?? [];
             return [$composer, array_merge($packages, $packagesDev)];
@@ -39,16 +46,49 @@ class LockParser
         $requiresDev = $composer['require-dev'] ?? [];
 
         foreach ($requires as $name => $constraint) {
-            if ($name === 'php') continue;
+            if (!str_contains($name, '/')) continue; // skip php, ext-*, lib-*
             $this->resolve($name, $constraint);
         }
+
+        // Anything first reached from require-dev only belongs in packages-dev.
+        $nonDevNames = array_keys($this->resolved);
 
         foreach ($requiresDev as $name => $constraint) {
-            if ($name === 'php') continue;
+            if (!str_contains($name, '/')) continue;
             $this->resolve($name, $constraint);
         }
 
+        $this->devPackageNames = array_values(array_diff(array_keys($this->resolved), $nonDevNames));
+        $this->wasResolved = true;
+
         return [$composer, array_values($this->resolved)];
+    }
+
+    /**
+     * Whether packages were resolved from composer.json (no composer.lock was present).
+     */
+    public function wasResolved(): bool
+    {
+        return $this->wasResolved;
+    }
+
+    /**
+     * @return array{0: array, 1: array} The resolved [packages, packages-dev].
+     */
+    public function getResolvedPackages(): array
+    {
+        $packages = [];
+        $packagesDev = [];
+
+        foreach ($this->resolved as $name => $package) {
+            if (in_array($name, $this->devPackageNames, true)) {
+                $packagesDev[] = $package;
+            } else {
+                $packages[] = $package;
+            }
+        }
+
+        return [$packages, $packagesDev];
     }
 
     protected function resolve(string $package, string $constraint): void
