@@ -174,6 +174,9 @@ Instead of copying files, Pomposer fills `vendor/` with symlinks into the global
 ```
 vendor/
 ├── autoload.php
+├── bin/                      # package binaries
+│   ├── phpunit               # PHP proxy (sets $_composer_autoload_path, includes the real bin)
+│   └── sail -> ../laravel/sail/bin/sail
 ├── composer/                 # generated autoloader + manifests (real files)
 │   ├── autoload_classmap.php
 │   ├── autoload_files.php
@@ -186,6 +189,13 @@ vendor/
 │   └── namecrement -> ~/.pomposer-store/hichemtab-tech/namecrement/1.1.0
 ├── monolog/
 │   └── monolog -> ~/.pomposer-store/monolog/monolog/3.9.0
+├── nikic/
+│   └── php-parser/           # package with a bin: real directory
+│       ├── .pomposer-link    # records the store path it mirrors
+│       ├── bin/
+│       │   └── php-parse     # hard link to the store file
+│       ├── composer.json -> ~/.pomposer-store/nikic/php-parser/v5.9.0/composer.json
+│       └── lib -> ~/.pomposer-store/nikic/php-parser/v5.9.0/lib
 └── psr/
     └── log -> ~/.pomposer-store/psr/log/3.0.2
 ```
@@ -193,10 +203,11 @@ vendor/
 - **IDE support**: PhpStorm, Intelephense and other tools index `vendor/` as usual, so autocompletion and go-to-definition work.
 - **Portable autoloader**: the generated autoload files use `$vendorDir` / `$baseDir` paths (like Composer) and resolve classes through the `vendor/` links, not hard-coded store paths.
 - **Kept in sync**: re-running `pomposer install` repoints links when a version changes, replaces real directories left behind by Composer, and removes links for packages that are no longer required.
+- **Binaries (`vendor/bin`)**: like Composer, PHP binaries get a proxy that sets `$GLOBALS['_composer_autoload_path']` and includes the real file, other binaries are symlinked (plus `.bat` proxies on Windows). Since PHP resolves symlinks, a package that ships binaries is *materialized*: its directory and the path to each bin are real, the bin files are hard links into the store (copies across filesystems) and everything else stays symlinked — so bins that look for `__DIR__ . '/../../../autoload.php'` find `vendor/autoload.php`. `vendor/bin` is also on the `PATH` while scripts run. Files in `vendor/bin` not created by Pomposer are left alone.
 - **Windows**: if creating a symlink is not permitted, Pomposer falls back to a directory junction (`mklink /J`).
 
 > [!NOTE]
-> At runtime PHP resolves symlinks, so `__FILE__` / `__DIR__` inside a package point to the store path. Packages that locate `vendor/autoload.php` by walking up from their own directory (e.g. `__DIR__ . '/../../autoload.php'`) won't find it.
+> At runtime PHP resolves symlinks, so `__FILE__` / `__DIR__` in a package's *library* code point to the store path. Library code that locates `vendor/autoload.php` by walking up from its own directory won't find it (binaries are not affected, see above).
 
 > [!TIP]
 > Add `vendor/` to `.gitignore` as usual — the links point to your local store and should not be committed.
@@ -298,8 +309,7 @@ Current limitations:
 
 **Vendor & autoloading**
 
-* ❌ **No `vendor/bin`:** Package binaries are not linked into `vendor/bin` yet.
-* ⚠️ **Symlinks resolve to the store at runtime:** `__FILE__` / `__DIR__` inside a package point to `~/.pomposer-store/...`, not `vendor/`. Packages that find `vendor/autoload.php` by walking up from their own directory will fail.
+* ⚠️ **Symlinks resolve to the store at runtime:** `__FILE__` / `__DIR__` in a package's library code point to `~/.pomposer-store/...`, not `vendor/`. Library code that finds `vendor/autoload.php` by walking up from its own directory will fail (binaries are handled).
 * ⚠️ **Shared store:** All projects share the same package files — patching a file in `vendor/` changes it for every project using that version.
 * ⚠️ **Symlinks required:** On Windows, symlinks need Developer Mode or admin rights; otherwise Pomposer falls back to directory junctions.
 * ⚠️ **Limited Autoloading:** No support for the deprecated `psr-0` standard or `exclude-from-classmap`.

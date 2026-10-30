@@ -3,6 +3,7 @@
 namespace HichemTabTech\Pomposer\Console;
 
 use HichemTabTech\Pomposer\AutoloadGenerator;
+use HichemTabTech\Pomposer\BinaryLinker;
 use HichemTabTech\Pomposer\Concerns\CommandsUtils;
 use HichemTabTech\Pomposer\Concerns\ConfiguresPrompts;
 use HichemTabTech\Pomposer\LockFile;
@@ -108,6 +109,9 @@ abstract class InstallerCommand extends Command
 
         $output->writeln('<info>🔗 Linking packages into vendor/...</info>');
         (new VendorLinker($store))->link($packages);
+
+        $output->writeln('<info>🔗 Installing binaries into vendor/bin...</info>');
+        (new BinaryLinker())->link($packages);
 
         $this->dumpAutoload($output, $composerJson, $packages, $devMode, $devPackageNames);
 

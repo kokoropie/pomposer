@@ -10,6 +10,13 @@ class ScriptRunner
             return;
         }
 
+        // Like Composer, make vendor/bin available to scripts (e.g. "phpunit" in post-install-cmd).
+        $binDir = getcwd() . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'bin';
+        if (is_dir($binDir) && !str_starts_with((string) getenv('PATH'), $binDir . PATH_SEPARATOR)) {
+            putenv('PATH=' . $binDir . PATH_SEPARATOR . getenv('PATH'));
+        }
+        putenv('COMPOSER_RUNTIME_BIN_DIR=' . $binDir);
+
         foreach ($composerJson['scripts'][$scriptKey] as $script) {
             if (str_starts_with($script, '@php ')) {
                 $cmd = substr($script, 5);
