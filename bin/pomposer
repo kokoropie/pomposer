@@ -2,6 +2,7 @@
 <?php
 
 use HichemTabTech\Pomposer\Console\InstallCommand;
+use HichemTabTech\Pomposer\Console\UpdateCommand;
 
 if (file_exists(__DIR__.'/../../../autoload.php')) {
     /** @noinspection PhpIncludeInspection */
@@ -18,6 +19,7 @@ $displayVersion = sprintf('%s', $pomposerVersion);
 
 $app = new Symfony\Component\Console\Application('Pomposer', $displayVersion);
 $app->add(new InstallCommand);
+$app->add(new UpdateCommand);
 
 /** @noinspection PhpUnhandledExceptionInspection */
 $app->run();

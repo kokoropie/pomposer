@@ -1,0 +1,96 @@
+<?php
+
+namespace HichemTabTech\Pomposer\Console;
+
+use HichemTabTech\Pomposer\AutoloadGenerator;
+use HichemTabTech\Pomposer\Concerns\CommandsUtils;
+use HichemTabTech\Pomposer\Concerns\ConfiguresPrompts;
+use HichemTabTech\Pomposer\LockFile;
+use HichemTabTech\Pomposer\LockParser;
+use HichemTabTech\Pomposer\PackageInstaller;
+use HichemTabTech\Pomposer\PackageStore;
+use HichemTabTech\Pomposer\ScriptRunner;
+use HichemTabTech\Pomposer\VendorLinker;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
+/**
+ * Shared install pipeline for install/update/require: download to the store,
+ * write composer.lock, link vendor/, generate autoload + manifests, run scripts.
+ */
+abstract class InstallerCommand extends Command
+{
+    use ConfiguresPrompts;
+    use CommandsUtils;
+
+    /**
+     * Interact with the user before validating the input.
+     *
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     * @return void
+     */
+    protected function interact(InputInterface $input, OutputInterface $output): void
+    {
+        parent::interact($input, $output);
+
+        $this->configurePrompts($input, $output);
+
+        $output->write(PHP_EOL.'  <fg=red>
+         _____                                          
+        |  __ \                                         
+        | |__) |__  _ __ ___  _ __   ___  ___  ___ _ __ 
+        |  ___/ _ \| \'_ ` _ \| \'_ \ / _ \/ __|/ _ \ \'__|
+        | |  | (_) | | | | | | |_) | (_) \__ \  __/ |
+        |_|   \___/|_| |_| |_| .__/ \___/|___/\___|_|
+                             | |
+                             |_|                                                                            
+        </>'.PHP_EOL.PHP_EOL);
+
+        $output->writeln('<fg=yellow>⚠️ Pomposer is in beta. Use at your own risk! Not for production use. It was built just as a proof of concept for now.</>');
+
+        $output->writeln('<fg=blue>💡 Interested in helping Pomposer grow?</>');
+        $output->writeln('<fg=blue>👉 If you have ideas, experience, or just curiosity — please join the discussion and contribute at: https://github.com/HichemTab-tech/pomposer/discussions/4</>');
+        $output->writeln('<fg=cyan>https://github.com/HichemTab-tech/pomposer</>' . PHP_EOL);
+
+    }
+
+    /**
+     * @param string $scriptEvent The Composer script event to run after the autoload dump (e.g. post-install-cmd).
+     */
+    protected function installPackages(OutputInterface $output, LockParser $parser, array $composerJson, array $packages, string $scriptEvent): void
+    {
+        $store = new PackageStore();
+        $installer = new PackageInstaller($store);
+
+        foreach ($packages as $pkg) {
+            $installer->install($pkg);
+        }
+
+        if ($parser->wasResolved()) {
+            $output->writeln('<info>🔒 Writing composer.lock...</info>');
+            (new LockFile())->write($composerJson, ...$parser->getResolvedPackages());
+        }
+
+        $output->writeln('<info>🔗 Linking packages into vendor/...</info>');
+        (new VendorLinker($store))->link($packages);
+
+        $generator = new AutoloadGenerator();
+
+        $output->writeln('<info>⚙️ Generating autoload files...</info>');
+        $generator->generate($packages, $composerJson);
+
+        $output->writeln('<info>📦 Generating full package manifest set...</info>');
+        // Pass both the packages and the root composer.json
+        $generator->generatePackageManifests($packages, $composerJson);
+
+        $output->writeln('<info>🔄 Running post-install scripts...</info>');
+        $scriptRunner = new ScriptRunner();
+
+        $scriptRunner->runScripts($composerJson, 'post-autoload-dump');
+        $scriptRunner->runScripts($composerJson, $scriptEvent);
+
+        $output->writeln('<info>✅ Post-install scripts completed!</info>');
+    }
+}

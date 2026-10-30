@@ -50,6 +50,15 @@ pomposer install
 
 ---
 
+## Commands
+
+| Command | Description |
+|---|---|
+| `pomposer install` | Install from `composer.lock`, or resolve `composer.json` and write the lock if there is none. |
+| `pomposer update [packages...]` | Re-resolve from `composer.json` and rewrite `composer.lock`. With package names, only those are updated; other locked packages keep their version while it still satisfies the constraints. Aliases: `u`, `upgrade`. |
+
+---
+
 ## Example 1: Build a small Project with Pomposer
 
 Let’s test Pomposer using a simple PHP app that:
@@ -271,8 +280,8 @@ Current limitations:
 
 **Commands & workflow**
 
-* ❌ **`install` only:** There is no `update`, `require`, `remove` or `dump-autoload` command yet.
-* ⚠️ **No `update` for an existing lock:** If `composer.json` changes, Pomposer warns that `composer.lock` is out of date but still installs from it; delete the lock to re-resolve.
+* ❌ **Missing commands:** There is no `require`, `remove` or `dump-autoload` command yet.
+* ⚠️ **No `--with-dependencies` for partial updates:** `pomposer update <package>` keeps the package's dependencies locked unless their locked version no longer satisfies the new constraints.
 * ❌ **No `--no-dev`:** `require-dev` / `packages-dev` are always installed.
 
 **Dependency resolution**
