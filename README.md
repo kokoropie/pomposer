@@ -57,6 +57,7 @@ pomposer install
 | `pomposer install` | Install from `composer.lock`, or resolve `composer.json` and write the lock if there is none. |
 | `pomposer update [packages...]` | Re-resolve from `composer.json` and rewrite `composer.lock`. With package names, only those are updated; other locked packages keep their version while it still satisfies the constraints. Aliases: `u`, `upgrade`. |
 | `pomposer require <packages...>` | Add packages to `composer.json` and install them. Accepts `vendor/pkg`, `vendor/pkg:^1.0`, `vendor/pkg=^1.0` or `vendor/pkg ^1.0`; without a constraint, `^<major>.<minor>` of the latest stable version is used. `--no-update` only edits `composer.json`. On failure, `composer.json` and `composer.lock` are restored. Alias: `r`. |
+| `pomposer require --dev <packages...>` / `pomposer require-dev <packages...>` | Same as `require`, but adds the packages to `require-dev` (they end up in `packages-dev` in the lock). Alias: `rd`. |
 
 ---
 

@@ -26,7 +26,13 @@ class RequireCommand extends InstallerCommand
             ->setAliases(['r'])
             ->setDescription('add packages to composer.json and install them')
             ->addArgument('packages', InputArgument::IS_ARRAY | InputArgument::REQUIRED, 'Packages to require, optionally with a constraint (e.g. vendor/package:^1.0)')
+            ->addOption('dev', null, InputOption::VALUE_NONE, 'Add the packages to require-dev')
             ->addOption('no-update', null, InputOption::VALUE_NONE, 'Only update composer.json, do not resolve or install');
+    }
+
+    protected function isDev(InputInterface $input): bool
+    {
+        return (bool) $input->getOption('dev');
     }
 
     /**
@@ -42,7 +48,7 @@ class RequireCommand extends InstallerCommand
 
         $packagist = new PackagistGateway();
         $editor = new ComposerJsonEditor($packagist);
-        $key = 'require';
+        $key = $this->isDev($input) ? 'require-dev' : 'require';
 
         $requirements = $editor->resolveConstraints($editor->parseRequirements($input->getArgument('packages')));
 
